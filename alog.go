@@ -41,15 +41,18 @@ func New(w io.Writer) *Alog {
 // Start begins the message loop for the asynchronous logger. It should be initiated as a goroutine to prevent
 // the caller from being blocked.
 func (al Alog) Start() {
+	var wg sync.WaitGroup
 out:
 	for {
+		wg.Wait()
 		select {
 		case <-al.shutdownCh:
 			al.shutdown()
 			break out
 		case msg := <-al.msgCh:
+			wg.Add(1)
 			go func(message string) {
-				al.write(msg, nil)
+				al.write(msg, &wg)
 			}(msg)
 		}
 	}
@@ -72,6 +75,7 @@ func (al Alog) write(msg string, wg *sync.WaitGroup) {
 			al.errorCh <- err
 		}()
 	}
+	wg.Done()
 }
 
 func (al Alog) shutdown() {
@@ -94,6 +98,8 @@ func (al Alog) ErrorChannel() <-chan error {
 // Stop shuts down the logger. It will wait for all pending messages to be written and then return.
 // The logger will no longer function after this method has been called.
 func (al Alog) Stop() {
+	al.shutdownCh <- struct{}{}
+	<-al.shutdownCompleteCh
 }
 
 // Write synchronously sends the message to the log output
